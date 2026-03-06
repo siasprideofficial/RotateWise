@@ -1,193 +1,168 @@
 # RotateWise Hosting Guide for Hostinger
 
-## What Files to Upload?
+## Quick Setup (5 Steps)
 
-### ✅ ONLY Upload These Files to Hostinger:
+### Step 1: Create Database
+1. Login to **Hostinger Panel**
+2. Go to **Databases** → **MySQL Databases**
+3. Create new database and note down:
+   - Database Name
+   - Database Username
+   - Database Password
 
-```
-Upload to public_html/
-├── index.html          ← From dist/ folder (after build)
-├── assets/             ← From dist/ folder (after build)
-├── api/                ← Create this folder manually
-│   ├── config.php      ← From backend/ folder
-│   ├── auth.php        ← From backend/api/ folder
-│   ├── leads.php       ← From backend/api/ folder
-│   ├── notifications.php
-│   ├── site-info.php
-│   ├── form-fields.php
-│   └── settings.php
-```
-
-### ❌ DO NOT Upload These Files:
-
-- `src/` folder (source code - not needed)
-- `node_modules/` folder (dependencies - not needed)
-- `package.json` (npm config - not needed)
-- `tsconfig.json` (TypeScript config - not needed)
-- `vite.config.ts` (Vite config - not needed)
-- `.md` files (documentation - not needed)
-
----
-
-## Step-by-Step Hosting Instructions
-
-### Step 1: Build the Website
-
-The project is already built! The production files are in the `dist/` folder.
-
-If you need to rebuild:
-```bash
-npm run build
-```
-
-### Step 2: Create Database on Hostinger
-
-1. Login to Hostinger → Go to **hPanel**
-2. Click **Databases** → **MySQL Databases**
-3. Create new database:
-   - Database name: `rotatewise_db`
-   - Username: `rotatewise_user`
-   - Password: (create strong password)
-4. **Write down these credentials!**
-
-### Step 3: Setup Database Tables
-
-1. Go to **phpMyAdmin** (in Hostinger panel)
-2. Select your new database
+### Step 2: Import Database Schema
+1. Go to **Databases** → **phpMyAdmin**
+2. Select your database
 3. Click **Import** tab
-4. Upload the `backend/database.sql` file
+4. Upload `backend/database.sql` file
 5. Click **Go** to import
 
-### Step 4: Upload Files to Hostinger
-
-#### Method A: Using File Manager (Easy)
-
-1. Go to Hostinger → **File Manager**
-2. Navigate to `public_html/`
-3. Delete any existing files (default Hostinger files)
-4. Upload from your `dist/` folder:
-   - `index.html`
-   - `assets/` folder (with all files inside)
-5. Create new folder called `api/`
-6. Upload PHP files to `api/` folder:
-   - `backend/config.php` → `api/config.php`
-   - All files from `backend/api/` → `api/`
-
-#### Method B: Using FTP
-
-1. Use FileZilla or similar FTP client
-2. Connect with Hostinger FTP credentials
-3. Navigate to `public_html/`
-4. Upload same files as above
-
-### Step 5: Configure Database Connection
-
-1. In Hostinger File Manager, go to `public_html/api/`
-2. Edit `config.php`
-3. Update these lines with YOUR database credentials:
-
-```php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'u123456789_rotatewise');  // Your actual DB name
-define('DB_USER', 'u123456789_admin');        // Your actual DB user
-define('DB_PASS', 'YourSecurePassword123');   // Your actual DB password
-```
-
-4. Save the file
-
-### Step 6: Test Your Website
-
-1. Visit: `https://yourdomain.com`
-2. Test the contact form popup
-3. Visit admin: `https://yourdomain.com/#/admin`
-4. Login: `admin@rotatewise.com` / `admin123`
-5. **IMPORTANT: Change password immediately in Settings!**
-
----
-
-## File Structure Summary
-
-### Your Project (Development)
-```
-rotatewise/
-├── dist/                 ← UPLOAD contents to public_html
-│   ├── index.html
-│   └── assets/
-├── backend/              ← UPLOAD to public_html/api
-│   ├── config.php
-│   ├── database.sql      ← Import to phpMyAdmin
-│   └── api/
-│       ├── auth.php
-│       ├── leads.php
-│       └── ...
-├── src/                  ← DO NOT upload (source code)
-├── node_modules/         ← DO NOT upload
-└── package.json          ← DO NOT upload
-```
-
-### Hostinger Server (Production)
+### Step 3: Upload Website Files
+Upload to `public_html/`:
 ```
 public_html/
-├── index.html            ← Your website
-├── assets/               ← CSS, JS, images
-│   ├── index-xxxxx.js
-│   └── index-xxxxx.css
-└── api/                  ← Backend PHP files
-    ├── config.php        ← Database credentials here
-    ├── auth.php
-    ├── leads.php
+├── index.html          (from dist/)
+├── assets/             (from dist/)
+└── api/
+    ├── .htaccess       (from backend/api/)
+    ├── config.php      (from backend/api/)
+    ├── auth.php        (from backend/api/)
+    ├── leads.php       (from backend/api/)
     ├── notifications.php
     ├── site-info.php
     ├── form-fields.php
-    └── settings.php
+    ├── settings.php
+    └── test.php        (for testing, delete later)
 ```
+
+### Step 4: Configure Database
+Edit `api/config.php` on Hostinger with your credentials:
+```php
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'u123456789_rotatewise');  // Your database name
+define('DB_USER', 'u123456789_admin');       // Your database user
+define('DB_PASS', 'YourPassword123');        // Your database password
+```
+
+### Step 5: Test
+1. Visit: `https://yourdomain.com/api/test.php`
+2. All tests should show ✅
+3. Delete `test.php` after successful testing
 
 ---
 
-## Common Questions
-
-### Q: Can I upload all files directly?
-**A:** No! Only upload the `dist/` folder contents and `backend/` folder contents. The source code (`src/`), dependencies (`node_modules/`), and config files are not needed on the server.
-
-### Q: What is the `dist/` folder?
-**A:** It's the production-ready version of your website. When you run `npm run build`, Vite compiles all your React code into optimized HTML, CSS, and JavaScript files.
-
-### Q: What is the `backend/` folder?
-**A:** Contains PHP files that connect to your MySQL database. These handle form submissions, admin login, and data storage.
-
-### Q: How does the frontend connect to backend?
-**A:** The React app makes API calls to `/api/` endpoints (e.g., `/api/leads.php`). Since both are in the same domain, it works automatically.
+## Admin Login
+- **URL**: `https://yourdomain.com/#/admin`
+- **Email**: `admin@rotatewise.com`
+- **Password**: `admin123`
+- ⚠️ **Change password immediately in Settings!**
 
 ---
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| White screen | Check browser console (F12) for errors |
-| API errors | Verify `config.php` has correct DB credentials |
-| 500 Server Error | Check PHP error logs in Hostinger |
-| Login fails | Make sure database tables were imported |
-| Form doesn't submit | Check Network tab in browser for API response |
+### Error: "Unable to connect to server"
+
+**Check 1: Test the API**
+Visit `https://yourdomain.com/api/test.php` in your browser.
+- If you see PHP code instead of results → PHP is not enabled
+- If you see database error → Check config.php credentials
+
+**Check 2: Verify config.php credentials**
+```php
+// Make sure these match your Hostinger database exactly:
+define('DB_HOST', 'localhost');           // Usually localhost
+define('DB_NAME', 'u123456789_dbname');   // From Hostinger panel
+define('DB_USER', 'u123456789_username'); // From Hostinger panel
+define('DB_PASS', 'your_password');       // The password you set
+```
+
+**Check 3: File permissions**
+In Hostinger File Manager:
+- `api/` folder: 755
+- All `.php` files: 644
+
+**Check 4: .htaccess uploaded**
+Make sure `api/.htaccess` file is uploaded (it handles CORS).
+
+### Error: "There was an error submitting your request"
+
+**Check 1: Database tables exist**
+Visit `https://yourdomain.com/api/test.php` and verify all tables show ✅
+
+**Check 2: Re-import database**
+1. Go to phpMyAdmin
+2. Drop all tables
+3. Re-import `database.sql`
+
+### Error: 500 Internal Server Error
+
+**Check 1: PHP version**
+- Go to Hostinger → **Advanced** → **PHP Configuration**
+- Select PHP 8.0 or higher
+
+**Check 2: Error logs**
+- Go to Hostinger → **Advanced** → **Error Logs**
+- Check for specific PHP errors
+
+---
+
+## File Structure on Hostinger
+
+```
+public_html/
+│
+├── index.html              ← Main website
+├── assets/
+│   ├── index-xxxxx.js      ← JavaScript
+│   └── index-xxxxx.css     ← Styles
+│
+└── api/
+    ├── .htaccess           ← CORS & routing
+    ├── config.php          ← Database credentials
+    ├── auth.php            ← Login/logout
+    ├── leads.php           ← Contact form submissions
+    ├── notifications.php   ← Admin notifications
+    ├── site-info.php       ← Site settings
+    ├── form-fields.php     ← Form customization
+    ├── settings.php        ← Admin settings
+    └── test.php            ← Testing (delete after)
+```
+
+---
+
+## Common Hostinger Issues
+
+### Issue: API returns HTML instead of JSON
+**Solution**: PHP might not be processing. Check PHP version in Hostinger panel.
+
+### Issue: CORS errors in browser console
+**Solution**: Make sure `.htaccess` file is uploaded to `api/` folder.
+
+### Issue: Database connection refused
+**Solution**: 
+- DB_HOST should be `localhost` (not your domain)
+- Verify username/password in Hostinger → Databases
+
+### Issue: 404 on API endpoints
+**Solution**: Make sure all PHP files are in `public_html/api/` folder.
 
 ---
 
 ## Security Checklist
 
-After going live:
+After successful setup:
 
-- [ ] Change admin password (Settings → Security)
-- [ ] Enable SSL/HTTPS in Hostinger
-- [ ] Update `config.php` CORS to your domain only
-- [ ] Set PHP file permissions to 644
-- [ ] Remove or rename `database.sql` from server
+- [ ] Delete `api/test.php`
+- [ ] Change admin password in Admin Panel → Settings
+- [ ] Change `JWT_SECRET` in config.php to a random string
+- [ ] Enable SSL certificate (Hostinger → SSL → Install)
+- [ ] Set proper file permissions (755 for folders, 644 for files)
 
 ---
 
-## Admin Panel Access
+## Need Help?
 
-- **URL:** `https://yourdomain.com/#/admin`
-- **Email:** `admin@rotatewise.com`
-- **Password:** `admin123`
-
-⚠️ **Change the password immediately after first login!**
+1. Visit `https://yourdomain.com/api/test.php` first
+2. Check Hostinger Error Logs
+3. Verify all credentials match exactly
