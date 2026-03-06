@@ -1,59 +1,88 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+require_once 'config.php';
+
+try {
+    $db = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database error']);
+    exit;
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? 'get';
+$action = isset($_GET['action']) ? $_GET['action'] : '';
 
-switch ($action) {
-    case 'get':
-        if ($method === 'GET') {
-            getSettings();
-        }
-        break;
-    case 'update':
-        if ($method === 'PUT') {
-            updateSettings();
-        }
-        break;
-    default:
-        sendResponse(['error' => 'Invalid action'], 400);
+// GET settings - action=get
+if ($method === 'GET' && $action === 'get') {
+    // Get settings from admin_settings table or return defaults
+    $stmt = $db->query("SELECT * FROM admin_settings WHERE id = 1");
+    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($settings) {
+        echo json_encode([
+            'settings' => [
+                'emailNotifications' => (bool)$settings['email_notifications'],
+                'dailySummary' => (bool)$settings['daily_summary'],
+                'weeklyReport' => (bool)$settings['weekly_report']
+            ]
+        ]);
+    } else {
+        // Return defaults
+        echo json_encode([
+            'settings' => [
+                'emailNotifications' => true,
+                'dailySummary' => false,
+                'weeklyReport' => true
+            ]
+        ]);
+    }
+    exit;
 }
 
-function getSettings() {
-    $adminId = checkAuth();
-    $pdo = getDBConnection();
+// PUT update settings - action=update
+if ($method === 'PUT' && $action === 'update') {
+    $input = json_decode(file_get_contents('php://input'), true);
     
-    $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM admin_settings WHERE admin_id = ?");
-    $stmt->execute([$adminId]);
-    $rows = $stmt->fetchAll();
+    // Check if settings exist
+    $stmt = $db->query("SELECT id FROM admin_settings WHERE id = 1");
+    $exists = $stmt->fetch();
     
-    $settings = [];
-    foreach ($rows as $row) {
-        $settings[$row['setting_key']] = $row['setting_value'] === 'true' ? true : ($row['setting_value'] === 'false' ? false : $row['setting_value']);
+    if ($exists) {
+        $stmt = $db->prepare("UPDATE admin_settings SET 
+            email_notifications = ?, 
+            daily_summary = ?, 
+            weekly_report = ?,
+            updated_at = NOW()
+            WHERE id = 1");
+        $stmt->execute([
+            ($input['emailNotifications'] ?? false) ? 1 : 0,
+            ($input['dailySummary'] ?? false) ? 1 : 0,
+            ($input['weeklyReport'] ?? false) ? 1 : 0
+        ]);
+    } else {
+        $stmt = $db->prepare("INSERT INTO admin_settings (id, email_notifications, daily_summary, weekly_report, created_at, updated_at) 
+            VALUES (1, ?, ?, ?, NOW(), NOW())");
+        $stmt->execute([
+            ($input['emailNotifications'] ?? false) ? 1 : 0,
+            ($input['dailySummary'] ?? false) ? 1 : 0,
+            ($input['weeklyReport'] ?? false) ? 1 : 0
+        ]);
     }
     
-    sendResponse(['settings' => $settings]);
+    echo json_encode(['success' => true]);
+    exit;
 }
 
-function updateSettings() {
-    $adminId = checkAuth();
-    $data = getJsonInput();
-    
-    $pdo = getDBConnection();
-    
-    $allowedKeys = ['emailNotifications', 'dailySummary', 'weeklyReport'];
-    
-    foreach ($data as $key => $value) {
-        if (in_array($key, $allowedKeys)) {
-            $stringValue = is_bool($value) ? ($value ? 'true' : 'false') : $value;
-            
-            $stmt = $pdo->prepare("INSERT INTO admin_settings (admin_id, setting_key, setting_value) 
-                                   VALUES (?, ?, ?) 
-                                   ON DUPLICATE KEY UPDATE setting_value = ?");
-            $stmt->execute([$adminId, $key, $stringValue, $stringValue]);
-        }
-    }
-    
-    sendResponse(['success' => true, 'message' => 'Settings updated']);
-}
+echo json_encode(['error' => 'Invalid request']);
 ?>

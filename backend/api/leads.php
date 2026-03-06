@@ -1,254 +1,171 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-$method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? 'list';
-
-switch ($action) {
-    case 'list':
-        if ($method === 'GET') {
-            getLeads();
-        }
-        break;
-    case 'get':
-        if ($method === 'GET') {
-            getLead();
-        }
-        break;
-    case 'create':
-        if ($method === 'POST') {
-            createLead();
-        }
-        break;
-    case 'update':
-        if ($method === 'PUT') {
-            updateLead();
-        }
-        break;
-    case 'update-status':
-        if ($method === 'PUT') {
-            updateLeadStatus();
-        }
-        break;
-    case 'delete':
-        if ($method === 'DELETE') {
-            deleteLead();
-        }
-        break;
-    case 'stats':
-        if ($method === 'GET') {
-            getStats();
-        }
-        break;
-    default:
-        sendResponse(['error' => 'Invalid action'], 400);
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
 }
 
-function getLeads() {
-    checkAuth();
-    $pdo = getDBConnection();
-    
-    $status = $_GET['status'] ?? '';
-    $source = $_GET['source'] ?? '';
-    $search = $_GET['search'] ?? '';
-    
+require_once 'config.php';
+
+try {
+    $db = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database error']);
+    exit;
+}
+
+$method = $_SERVER['REQUEST_METHOD'];
+$action = isset($_GET['action']) ? $_GET['action'] : '';
+
+// GET all leads - action=list
+if ($method === 'GET' && $action === 'list') {
     $sql = "SELECT * FROM leads WHERE 1=1";
     $params = [];
     
-    if (!empty($status)) {
+    if (!empty($_GET['status'])) {
         $sql .= " AND status = ?";
-        $params[] = $status;
+        $params[] = $_GET['status'];
     }
-    
-    if (!empty($source)) {
+    if (!empty($_GET['source'])) {
         $sql .= " AND source = ?";
-        $params[] = $source;
+        $params[] = $_GET['source'];
     }
-    
-    if (!empty($search)) {
+    if (!empty($_GET['search'])) {
         $sql .= " AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)";
-        $searchTerm = "%$search%";
-        $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $params[] = $searchTerm;
+        $search = '%' . $_GET['search'] . '%';
+        $params[] = $search;
+        $params[] = $search;
+        $params[] = $search;
     }
     
     $sql .= " ORDER BY created_at DESC";
     
-    $stmt = $pdo->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->execute($params);
-    $leads = $stmt->fetchAll();
+    $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    sendResponse(['leads' => $leads]);
+    echo json_encode(['leads' => $leads]);
+    exit;
 }
 
-function getLead() {
-    checkAuth();
-    $id = $_GET['id'] ?? 0;
-    
-    if (!$id) {
-        sendResponse(['error' => 'Lead ID is required'], 400);
-    }
-    
-    $pdo = getDBConnection();
-    $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
+// GET single lead - action=get&id=X
+if ($method === 'GET' && $action === 'get') {
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    $stmt = $db->prepare("SELECT * FROM leads WHERE id = ?");
     $stmt->execute([$id]);
-    $lead = $stmt->fetch();
-    
-    if (!$lead) {
-        sendResponse(['error' => 'Lead not found'], 404);
-    }
-    
-    sendResponse(['lead' => $lead]);
+    $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(['lead' => $lead]);
+    exit;
 }
 
-function createLead() {
-    $data = getJsonInput();
+// GET stats - action=stats
+if ($method === 'GET' && $action === 'stats') {
+    $total = $db->query("SELECT COUNT(*) FROM leads")->fetchColumn();
+    $new = $db->query("SELECT COUNT(*) FROM leads WHERE status = 'new'")->fetchColumn();
+    $contacted = $db->query("SELECT COUNT(*) FROM leads WHERE status = 'contacted'")->fetchColumn();
+    $converted = $db->query("SELECT COUNT(*) FROM leads WHERE status = 'converted'")->fetchColumn();
     
-    $name = $data['name'] ?? '';
-    $email = $data['email'] ?? '';
-    $phone = $data['phone'] ?? '';
-    $loanAmount = $data['loanAmount'] ?? $data['loan_amount'] ?? '';
-    $employmentStatus = $data['employmentStatus'] ?? $data['employment_status'] ?? '';
-    $message = $data['message'] ?? $data['details'] ?? '';
-    $source = $data['source'] ?? 'contact-page';
+    // Get recent leads
+    $stmt = $db->query("SELECT * FROM leads ORDER BY created_at DESC LIMIT 5");
+    $recentLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if (empty($name) || empty($email)) {
-        sendResponse(['error' => 'Name and email are required'], 400);
-    }
-    
-    $pdo = getDBConnection();
-    $stmt = $pdo->prepare("
-        INSERT INTO leads (name, email, phone, loan_amount, employment_status, message, source, status) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'new')
-    ");
-    $stmt->execute([$name, $email, $phone, $loanAmount, $employmentStatus, $message, $source]);
-    
-    $leadId = $pdo->lastInsertId();
-    
-    // Create notification for new lead
-    $notifStmt = $pdo->prepare("
-        INSERT INTO notifications (type, title, message, lead_id) 
-        VALUES ('lead', 'New Lead Received', ?, ?)
-    ");
-    $notifStmt->execute(["New consultation request from $name ($email)", $leadId]);
-    
-    sendResponse(['success' => true, 'id' => $leadId, 'message' => 'Lead created successfully'], 201);
-}
-
-function updateLead() {
-    checkAuth();
-    $data = getJsonInput();
-    $id = $data['id'] ?? $_GET['id'] ?? 0;
-    
-    if (!$id) {
-        sendResponse(['error' => 'Lead ID is required'], 400);
-    }
-    
-    $pdo = getDBConnection();
-    
-    $fields = [];
-    $params = [];
-    
-    $allowedFields = ['name', 'email', 'phone', 'loan_amount', 'employment_status', 'message', 'status'];
-    
-    foreach ($allowedFields as $field) {
-        $camelCase = lcfirst(str_replace('_', '', ucwords($field, '_')));
-        if (isset($data[$field]) || isset($data[$camelCase])) {
-            $fields[] = "$field = ?";
-            $params[] = $data[$field] ?? $data[$camelCase];
-        }
-    }
-    
-    if (empty($fields)) {
-        sendResponse(['error' => 'No fields to update'], 400);
-    }
-    
-    $params[] = $id;
-    $sql = "UPDATE leads SET " . implode(', ', $fields) . " WHERE id = ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    
-    sendResponse(['success' => true, 'message' => 'Lead updated successfully']);
-}
-
-function updateLeadStatus() {
-    checkAuth();
-    $data = getJsonInput();
-    $id = $data['id'] ?? $_GET['id'] ?? 0;
-    $status = $data['status'] ?? '';
-    
-    if (!$id || !$status) {
-        sendResponse(['error' => 'Lead ID and status are required'], 400);
-    }
-    
-    $validStatuses = ['new', 'contacted', 'converted', 'closed'];
-    if (!in_array($status, $validStatuses)) {
-        sendResponse(['error' => 'Invalid status'], 400);
-    }
-    
-    $pdo = getDBConnection();
-    $stmt = $pdo->prepare("UPDATE leads SET status = ? WHERE id = ?");
-    $stmt->execute([$status, $id]);
-    
-    // Create notification for status change
-    $notifStmt = $pdo->prepare("
-        INSERT INTO notifications (type, title, message, lead_id) 
-        VALUES ('status', 'Lead Status Updated', ?, ?)
-    ");
-    $notifStmt->execute(["Lead #$id status changed to $status", $id]);
-    
-    sendResponse(['success' => true, 'message' => 'Status updated successfully']);
-}
-
-function deleteLead() {
-    checkAuth();
-    $id = $_GET['id'] ?? 0;
-    
-    if (!$id) {
-        sendResponse(['error' => 'Lead ID is required'], 400);
-    }
-    
-    $pdo = getDBConnection();
-    $stmt = $pdo->prepare("DELETE FROM leads WHERE id = ?");
-    $stmt->execute([$id]);
-    
-    sendResponse(['success' => true, 'message' => 'Lead deleted successfully']);
-}
-
-function getStats() {
-    checkAuth();
-    $pdo = getDBConnection();
-    
-    // Total leads
-    $stmt = $pdo->query("SELECT COUNT(*) as total FROM leads");
-    $total = $stmt->fetch()['total'];
-    
-    // New leads (last 7 days)
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'");
-    $newLeads = $stmt->fetch()['count'];
-    
-    // Contacted
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM leads WHERE status = 'contacted'");
-    $contacted = $stmt->fetch()['count'];
-    
-    // Converted
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM leads WHERE status = 'converted'");
-    $converted = $stmt->fetch()['count'];
-    
-    // Recent leads
-    $stmt = $pdo->query("SELECT * FROM leads ORDER BY created_at DESC LIMIT 5");
-    $recentLeads = $stmt->fetchAll();
-    
-    sendResponse([
+    echo json_encode([
         'stats' => [
             'total' => (int)$total,
-            'new' => (int)$newLeads,
+            'new' => (int)$new,
             'contacted' => (int)$contacted,
             'converted' => (int)$converted
         ],
         'recentLeads' => $recentLeads
     ]);
+    exit;
 }
+
+// POST create lead - action=create
+if ($method === 'POST' && ($action === 'create' || empty($action))) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $stmt = $db->prepare("INSERT INTO leads (name, email, phone, loan_amount, employment_status, message, source, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'new', NOW())");
+    $stmt->execute([
+        $input['name'] ?? '',
+        $input['email'] ?? '',
+        $input['phone'] ?? '',
+        $input['loanAmount'] ?? $input['loan_amount'] ?? '',
+        $input['employmentStatus'] ?? $input['employment_status'] ?? '',
+        $input['message'] ?? '',
+        $input['source'] ?? 'website'
+    ]);
+    
+    $leadId = $db->lastInsertId();
+    
+    // Create notification
+    $stmt = $db->prepare("INSERT INTO notifications (type, title, message, lead_id, is_read, created_at) VALUES ('lead', 'New Lead', ?, ?, 0, NOW())");
+    $stmt->execute([
+        'New consultation request from ' . ($input['name'] ?? 'Unknown'),
+        $leadId
+    ]);
+    
+    echo json_encode(['success' => true, 'id' => (int)$leadId]);
+    exit;
+}
+
+// PUT update lead status - action=update-status
+if ($method === 'PUT' && $action === 'update-status') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? 0;
+    $status = $input['status'] ?? 'new';
+    
+    $stmt = $db->prepare("UPDATE leads SET status = ?, updated_at = NOW() WHERE id = ?");
+    $stmt->execute([$status, $id]);
+    
+    // Create notification for status change
+    $stmt = $db->prepare("SELECT name FROM leads WHERE id = ?");
+    $stmt->execute([$id]);
+    $lead = $stmt->fetch();
+    
+    $stmt = $db->prepare("INSERT INTO notifications (type, title, message, lead_id, is_read, created_at) VALUES ('status', 'Status Updated', ?, ?, 0, NOW())");
+    $stmt->execute([
+        'Lead "' . ($lead['name'] ?? 'Unknown') . '" status changed to ' . $status,
+        $id
+    ]);
+    
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+// PUT update lead - action=update&id=X
+if ($method === 'PUT' && $action === 'update') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : ($input['id'] ?? 0);
+    
+    $stmt = $db->prepare("UPDATE leads SET status = ?, updated_at = NOW() WHERE id = ?");
+    $stmt->execute([$input['status'] ?? 'new', $id]);
+    
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+// DELETE lead - action=delete&id=X
+if ($method === 'DELETE' && $action === 'delete') {
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    
+    // Delete related notifications first
+    $stmt = $db->prepare("DELETE FROM notifications WHERE lead_id = ?");
+    $stmt->execute([$id]);
+    
+    // Delete lead
+    $stmt = $db->prepare("DELETE FROM leads WHERE id = ?");
+    $stmt->execute([$id]);
+    
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+echo json_encode(['error' => 'Invalid request']);
 ?>
