@@ -1,177 +1,142 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '../../components/AdminLayout';
-import { Plus, Edit2, Trash2, Save, X, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
+import { formFieldsAPI } from '../../services/api';
+import { Plus, Edit2, Trash2, Save, X, GripVertical, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+
+interface FormOption {
+  id: number;
+  field_id: number;
+  option_value: string;
+  option_label: string;
+  sort_order: number;
+}
 
 interface FormField {
-  id: string;
-  name: string;
+  id: number;
+  field_name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'textarea' | 'select';
+  field_type: 'text' | 'email' | 'tel' | 'textarea' | 'select';
   placeholder: string;
   required: boolean;
   enabled: boolean;
-  options?: { id: string; value: string; label: string }[];
+  sort_order: number;
+  options?: FormOption[];
 }
-
-const defaultFields: FormField[] = [
-  {
-    id: 'fullName',
-    name: 'fullName',
-    label: 'Full Name',
-    type: 'text',
-    placeholder: 'John Doe',
-    required: true,
-    enabled: true,
-  },
-  {
-    id: 'email',
-    name: 'email',
-    label: 'Email Address',
-    type: 'email',
-    placeholder: 'john@example.com',
-    required: true,
-    enabled: true,
-  },
-  {
-    id: 'phone',
-    name: 'phone',
-    label: 'Phone Number',
-    type: 'tel',
-    placeholder: '+1 (555) 000-0000',
-    required: true,
-    enabled: true,
-  },
-  {
-    id: 'loanAmount',
-    name: 'loanAmount',
-    label: 'Loan Amount Interested',
-    type: 'select',
-    placeholder: 'Select loan amount',
-    required: true,
-    enabled: true,
-    options: [
-      { id: '1', value: 'under-5000', label: 'Under $5,000' },
-      { id: '2', value: '5000-10000', label: '$5,000 - $10,000' },
-      { id: '3', value: '10000-25000', label: '$10,000 - $25,000' },
-      { id: '4', value: '25000-50000', label: '$25,000 - $50,000' },
-      { id: '5', value: '50000-plus', label: '$50,000+' },
-    ],
-  },
-  {
-    id: 'employmentStatus',
-    name: 'employmentStatus',
-    label: 'Employment Status',
-    type: 'select',
-    placeholder: 'Select employment status',
-    required: true,
-    enabled: true,
-    options: [
-      { id: '1', value: 'employed-full', label: 'Employed Full-Time' },
-      { id: '2', value: 'employed-part', label: 'Employed Part-Time' },
-      { id: '3', value: 'self-employed', label: 'Self-Employed' },
-      { id: '4', value: 'business-owner', label: 'Business Owner' },
-      { id: '5', value: 'retired', label: 'Retired' },
-      { id: '6', value: 'student', label: 'Student' },
-      { id: '7', value: 'other', label: 'Other' },
-    ],
-  },
-  {
-    id: 'message',
-    name: 'message',
-    label: 'Additional Information',
-    type: 'textarea',
-    placeholder: 'Tell us more about your requirements...',
-    required: false,
-    enabled: true,
-  },
-];
 
 export default function AdminContactForm() {
   const [fields, setFields] = useState<FormField[]>([]);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editingOption, setEditingOption] = useState<{ fieldId: string; optionId: string } | null>(null);
+  const [editingField, setEditingField] = useState<number | null>(null);
+  const [editingOption, setEditingOption] = useState<{ fieldId: number; optionId: number } | null>(null);
   const [showAddField, setShowAddField] = useState(false);
-  const [showAddOption, setShowAddOption] = useState<string | null>(null);
-  const [expandedFields, setExpandedFields] = useState<string[]>([]);
+  const [showAddOption, setShowAddOption] = useState<number | null>(null);
+  const [expandedFields, setExpandedFields] = useState<number[]>([]);
   const [saveMessage, setSaveMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // New field form state
-  const [newField, setNewField] = useState<Partial<FormField>>({
-    name: '',
+  const [newField, setNewField] = useState({
+    field_name: '',
     label: '',
-    type: 'text',
+    field_type: 'text' as FormField['field_type'],
     placeholder: '',
     required: false,
-    enabled: true,
   });
 
   // New option form state
-  const [newOption, setNewOption] = useState({ value: '', label: '' });
+  const [newOption, setNewOption] = useState({ option_value: '', option_label: '' });
 
   // Edit field form state
   const [editFieldData, setEditFieldData] = useState<Partial<FormField>>({});
 
   // Edit option form state
-  const [editOptionData, setEditOptionData] = useState({ value: '', label: '' });
+  const [editOptionData, setEditOptionData] = useState({ option_value: '', option_label: '' });
+
+  const fetchFields = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await formFieldsAPI.getAll();
+      if (response.fields) {
+        setFields(response.fields);
+      }
+    } catch (err) {
+      console.error('Error fetching fields:', err);
+      setError('Failed to load form fields.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const savedFields = localStorage.getItem('contactFormFields');
-    if (savedFields) {
-      setFields(JSON.parse(savedFields));
-    } else {
-      setFields(defaultFields);
-      localStorage.setItem('contactFormFields', JSON.stringify(defaultFields));
-    }
+    fetchFields();
   }, []);
 
-  const saveFields = (updatedFields: FormField[]) => {
-    setFields(updatedFields);
-    localStorage.setItem('contactFormFields', JSON.stringify(updatedFields));
-    setSaveMessage('Changes saved successfully!');
+  const showSuccess = (message: string = 'Changes saved successfully!') => {
+    setSaveMessage(message);
     setTimeout(() => setSaveMessage(''), 3000);
   };
 
-  const toggleFieldExpanded = (fieldId: string) => {
+  const toggleFieldExpanded = (fieldId: number) => {
     setExpandedFields(prev =>
       prev.includes(fieldId) ? prev.filter(id => id !== fieldId) : [...prev, fieldId]
     );
   };
 
-  const toggleFieldEnabled = (fieldId: string) => {
-    const updatedFields = fields.map(field =>
-      field.id === fieldId ? { ...field, enabled: !field.enabled } : field
-    );
-    saveFields(updatedFields);
+  const toggleFieldEnabled = async (fieldId: number) => {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+    
+    try {
+      await formFieldsAPI.update(fieldId, { enabled: !field.enabled });
+      setFields(fields.map(f => f.id === fieldId ? { ...f, enabled: !f.enabled } : f));
+      showSuccess();
+    } catch (err) {
+      console.error('Error updating field:', err);
+    }
   };
 
-  // Toggle required is handled in editFieldData
-
   // Add new field
-  const handleAddField = () => {
-    if (!newField.name || !newField.label) return;
+  const handleAddField = async () => {
+    if (!newField.field_name || !newField.label) return;
 
-    const field: FormField = {
-      id: Date.now().toString(),
-      name: newField.name || '',
-      label: newField.label || '',
-      type: newField.type || 'text',
-      placeholder: newField.placeholder || '',
-      required: newField.required || false,
-      enabled: true,
-      options: newField.type === 'select' ? [] : undefined,
-    };
-
-    const updatedFields = [...fields, field];
-    saveFields(updatedFields);
-    setNewField({
-      name: '',
-      label: '',
-      type: 'text',
-      placeholder: '',
-      required: false,
-      enabled: true,
-    });
-    setShowAddField(false);
+    try {
+      const response = await formFieldsAPI.create({
+        field_name: newField.field_name,
+        label: newField.label,
+        field_type: newField.field_type,
+        placeholder: newField.placeholder,
+        required: newField.required,
+        enabled: true,
+        sort_order: fields.length + 1,
+      });
+      
+      if (response.id) {
+        setFields([...fields, {
+          id: response.id,
+          field_name: newField.field_name,
+          label: newField.label,
+          field_type: newField.field_type,
+          placeholder: newField.placeholder,
+          required: newField.required,
+          enabled: true,
+          sort_order: fields.length + 1,
+          options: newField.field_type === 'select' ? [] : undefined,
+        }]);
+        setNewField({
+          field_name: '',
+          label: '',
+          field_type: 'text',
+          placeholder: '',
+          required: false,
+        });
+        setShowAddField(false);
+        showSuccess('Field added successfully!');
+      }
+    } catch (err) {
+      console.error('Error adding field:', err);
+      alert('Failed to add field.');
+    }
   };
 
   // Edit field
@@ -184,93 +149,122 @@ export default function AdminContactForm() {
     });
   };
 
-  const handleEditField = (fieldId: string) => {
-    const updatedFields = fields.map(field =>
-      field.id === fieldId
-        ? { ...field, ...editFieldData }
-        : field
-    );
-    saveFields(updatedFields);
-    setEditingField(null);
-    setEditFieldData({});
+  const handleEditField = async (fieldId: number) => {
+    try {
+      await formFieldsAPI.update(fieldId, editFieldData);
+      setFields(fields.map(field =>
+        field.id === fieldId ? { ...field, ...editFieldData } : field
+      ));
+      setEditingField(null);
+      setEditFieldData({});
+      showSuccess();
+    } catch (err) {
+      console.error('Error updating field:', err);
+    }
   };
 
   // Delete field
-  const handleDeleteField = (fieldId: string) => {
-    if (confirm('Are you sure you want to delete this field?')) {
-      const updatedFields = fields.filter(field => field.id !== fieldId);
-      saveFields(updatedFields);
+  const handleDeleteField = async (fieldId: number) => {
+    if (!confirm('Are you sure you want to delete this field?')) return;
+    
+    try {
+      await formFieldsAPI.delete(fieldId);
+      setFields(fields.filter(field => field.id !== fieldId));
+      showSuccess('Field deleted successfully!');
+    } catch (err) {
+      console.error('Error deleting field:', err);
     }
   };
 
   // Add option to select field
-  const handleAddOption = (fieldId: string) => {
-    if (!newOption.value || !newOption.label) return;
+  const handleAddOption = async (fieldId: number) => {
+    if (!newOption.option_value || !newOption.option_label) return;
 
-    const updatedFields = fields.map(field => {
-      if (field.id === fieldId && field.options) {
-        return {
-          ...field,
-          options: [
-            ...field.options,
-            { id: Date.now().toString(), value: newOption.value, label: newOption.label },
-          ],
+    try {
+      const response = await formFieldsAPI.createOption({
+        field_id: fieldId,
+        option_value: newOption.option_value,
+        option_label: newOption.option_label,
+      });
+      
+      if (response.id) {
+        const field = fields.find(f => f.id === fieldId);
+        const newOpt: FormOption = {
+          id: response.id,
+          field_id: fieldId,
+          option_value: newOption.option_value,
+          option_label: newOption.option_label,
+          sort_order: (field?.options?.length || 0) + 1,
         };
+        
+        setFields(fields.map(f => {
+          if (f.id === fieldId) {
+            return { ...f, options: [...(f.options || []), newOpt] };
+          }
+          return f;
+        }));
+        
+        setNewOption({ option_value: '', option_label: '' });
+        setShowAddOption(null);
+        showSuccess('Option added successfully!');
       }
-      return field;
-    });
-
-    saveFields(updatedFields);
-    setNewOption({ value: '', label: '' });
-    setShowAddOption(null);
+    } catch (err) {
+      console.error('Error adding option:', err);
+    }
   };
 
   // Edit option
-  const startEditOption = (fieldId: string, option: { id: string; value: string; label: string }) => {
+  const startEditOption = (fieldId: number, option: FormOption) => {
     setEditingOption({ fieldId, optionId: option.id });
-    setEditOptionData({ value: option.value, label: option.label });
+    setEditOptionData({ option_value: option.option_value, option_label: option.option_label });
   };
 
-  const handleEditOption = () => {
+  const handleEditOption = async () => {
     if (!editingOption) return;
 
-    const updatedFields = fields.map(field => {
-      if (field.id === editingOption.fieldId && field.options) {
-        return {
-          ...field,
-          options: field.options.map(opt =>
-            opt.id === editingOption.optionId
-              ? { ...opt, ...editOptionData }
-              : opt
-          ),
-        };
-      }
-      return field;
-    });
-
-    saveFields(updatedFields);
-    setEditingOption(null);
-    setEditOptionData({ value: '', label: '' });
-  };
-
-  // Delete option
-  const handleDeleteOption = (fieldId: string, optionId: string) => {
-    if (confirm('Are you sure you want to delete this option?')) {
-      const updatedFields = fields.map(field => {
-        if (field.id === fieldId && field.options) {
+    try {
+      await formFieldsAPI.updateOption(editingOption.optionId, editOptionData);
+      
+      setFields(fields.map(field => {
+        if (field.id === editingOption.fieldId && field.options) {
           return {
             ...field,
-            options: field.options.filter(opt => opt.id !== optionId),
+            options: field.options.map(opt =>
+              opt.id === editingOption.optionId ? { ...opt, ...editOptionData } : opt
+            ),
           };
         }
         return field;
-      });
-      saveFields(updatedFields);
+      }));
+      
+      setEditingOption(null);
+      setEditOptionData({ option_value: '', option_label: '' });
+      showSuccess();
+    } catch (err) {
+      console.error('Error updating option:', err);
+    }
+  };
+
+  // Delete option
+  const handleDeleteOption = async (fieldId: number, optionId: number) => {
+    if (!confirm('Are you sure you want to delete this option?')) return;
+    
+    try {
+      await formFieldsAPI.deleteOption(optionId);
+      setFields(fields.map(field => {
+        if (field.id === fieldId && field.options) {
+          return { ...field, options: field.options.filter(opt => opt.id !== optionId) };
+        }
+        return field;
+      }));
+      showSuccess('Option deleted successfully!');
+    } catch (err) {
+      console.error('Error deleting option:', err);
     }
   };
 
   // Move field up/down
-  const moveField = (fieldId: string, direction: 'up' | 'down') => {
+  const moveField = async (fieldId: number, direction: 'up' | 'down') => {
     const index = fields.findIndex(f => f.id === fieldId);
     if (
       (direction === 'up' && index === 0) ||
@@ -282,29 +276,14 @@ export default function AdminContactForm() {
     const newFields = [...fields];
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     [newFields[index], newFields[newIndex]] = [newFields[newIndex], newFields[index]];
-    saveFields(newFields);
-  };
-
-  // Move option up/down
-  const moveOption = (fieldId: string, optionId: string, direction: 'up' | 'down') => {
-    const updatedFields = fields.map(field => {
-      if (field.id === fieldId && field.options) {
-        const index = field.options.findIndex(o => o.id === optionId);
-        if (
-          (direction === 'up' && index === 0) ||
-          (direction === 'down' && index === field.options.length - 1)
-        ) {
-          return field;
-        }
-
-        const newOptions = [...field.options];
-        const newIndex = direction === 'up' ? index - 1 : index + 1;
-        [newOptions[index], newOptions[newIndex]] = [newOptions[newIndex], newOptions[index]];
-        return { ...field, options: newOptions };
-      }
-      return field;
-    });
-    saveFields(updatedFields);
+    setFields(newFields);
+    
+    try {
+      await formFieldsAPI.reorder(newFields.map(f => f.id));
+      showSuccess();
+    } catch (err) {
+      console.error('Error reordering fields:', err);
+    }
   };
 
   const getFieldTypeLabel = (type: string) => {
@@ -318,6 +297,16 @@ export default function AdminContactForm() {
     return types[type] || type;
   };
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -327,14 +316,30 @@ export default function AdminContactForm() {
             <h1 className="text-2xl font-bold text-gray-900">Contact Form Settings</h1>
             <p className="text-gray-600 mt-1">Manage form fields and options for the contact page</p>
           </div>
-          <button
-            onClick={() => setShowAddField(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add New Field
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchFields}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+            <button
+              onClick={() => setShowAddField(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add New Field
+            </button>
+          </div>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
 
         {/* Save Message */}
         {saveMessage && (
@@ -353,8 +358,8 @@ export default function AdminContactForm() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Field Name (ID)</label>
                 <input
                   type="text"
-                  value={newField.name}
-                  onChange={(e) => setNewField({ ...newField, name: e.target.value.replace(/\s/g, '') })}
+                  value={newField.field_name}
+                  onChange={(e) => setNewField({ ...newField, field_name: e.target.value.replace(/\s/g, '') })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="fieldName"
                 />
@@ -372,8 +377,8 @@ export default function AdminContactForm() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Field Type</label>
                 <select
-                  value={newField.type}
-                  onChange={(e) => setNewField({ ...newField, type: e.target.value as FormField['type'] })}
+                  value={newField.field_type}
+                  onChange={(e) => setNewField({ ...newField, field_type: e.target.value as FormField['field_type'] })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="text">Text Input</option>
@@ -490,7 +495,7 @@ export default function AdminContactForm() {
                         )}
                       </div>
                       <p className="text-sm text-gray-500">
-                        {getFieldTypeLabel(field.type)} • {field.name}
+                        {getFieldTypeLabel(field.field_type)} • {field.field_name}
                       </p>
                     </div>
                   )}
@@ -521,7 +526,7 @@ export default function AdminContactForm() {
                     <Trash2 className="w-4 h-4" />
                   </button>
 
-                  {field.type === 'select' && (
+                  {field.field_type === 'select' && (
                     <button
                       onClick={() => toggleFieldExpanded(field.id)}
                       className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -537,7 +542,7 @@ export default function AdminContactForm() {
               </div>
 
               {/* Options List for Select Fields */}
-              {field.type === 'select' && expandedFields.includes(field.id) && (
+              {field.field_type === 'select' && expandedFields.includes(field.id) && (
                 <div className="border-t border-gray-200 p-4 bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-gray-700">Dropdown Options</h4>
@@ -556,15 +561,15 @@ export default function AdminContactForm() {
                       <div className="flex flex-wrap items-center gap-3">
                         <input
                           type="text"
-                          value={newOption.value}
-                          onChange={(e) => setNewOption({ ...newOption, value: e.target.value.replace(/\s/g, '-').toLowerCase() })}
+                          value={newOption.option_value}
+                          onChange={(e) => setNewOption({ ...newOption, option_value: e.target.value.replace(/\s/g, '-').toLowerCase() })}
                           className="flex-1 min-w-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                           placeholder="value-id"
                         />
                         <input
                           type="text"
-                          value={newOption.label}
-                          onChange={(e) => setNewOption({ ...newOption, label: e.target.value })}
+                          value={newOption.option_label}
+                          onChange={(e) => setNewOption({ ...newOption, option_label: e.target.value })}
                           className="flex-1 min-w-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                           placeholder="Display Label"
                         />
@@ -577,7 +582,7 @@ export default function AdminContactForm() {
                         <button
                           onClick={() => {
                             setShowAddOption(null);
-                            setNewOption({ value: '', label: '' });
+                            setNewOption({ option_value: '', option_label: '' });
                           }}
                           className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                         >
@@ -589,41 +594,24 @@ export default function AdminContactForm() {
 
                   {/* Options */}
                   <div className="space-y-2">
-                    {field.options?.map((option, optIndex) => (
+                    {field.options?.map((option) => (
                       <div
                         key={option.id}
                         className="bg-white p-3 rounded-lg border border-gray-200 flex items-center gap-3"
                       >
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => moveOption(field.id, option.id, 'up')}
-                            disabled={optIndex === 0}
-                            className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                          >
-                            <ChevronUp className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => moveOption(field.id, option.id, 'down')}
-                            disabled={optIndex === (field.options?.length || 0) - 1}
-                            className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                          >
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </div>
-
                         {editingOption?.fieldId === field.id && editingOption?.optionId === option.id ? (
                           <>
                             <input
                               type="text"
-                              value={editOptionData.value}
-                              onChange={(e) => setEditOptionData({ ...editOptionData, value: e.target.value })}
+                              value={editOptionData.option_value}
+                              onChange={(e) => setEditOptionData({ ...editOptionData, option_value: e.target.value })}
                               className="flex-1 px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                               placeholder="value-id"
                             />
                             <input
                               type="text"
-                              value={editOptionData.label}
-                              onChange={(e) => setEditOptionData({ ...editOptionData, label: e.target.value })}
+                              value={editOptionData.option_label}
+                              onChange={(e) => setEditOptionData({ ...editOptionData, option_label: e.target.value })}
                               className="flex-1 px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                               placeholder="Display Label"
                             />
@@ -643,8 +631,8 @@ export default function AdminContactForm() {
                         ) : (
                           <>
                             <div className="flex-1">
-                              <span className="font-medium text-gray-900">{option.label}</span>
-                              <span className="text-gray-400 text-sm ml-2">({option.value})</span>
+                              <span className="font-medium text-gray-900">{option.option_label}</span>
+                              <span className="text-gray-400 text-sm ml-2">({option.option_value})</span>
                             </div>
                             <button
                               onClick={() => startEditOption(field.id, option)}
@@ -673,6 +661,12 @@ export default function AdminContactForm() {
               )}
             </div>
           ))}
+
+          {fields.length === 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center text-gray-500">
+              No form fields found. Click "Add New Field" to create one.
+            </div>
+          )}
         </div>
 
         {/* Preview Section */}
@@ -686,26 +680,26 @@ export default function AdminContactForm() {
                     {field.label}
                     {field.required && <span className="text-red-500 ml-1">*</span>}
                   </label>
-                  {field.type === 'textarea' ? (
+                  {field.field_type === 'textarea' ? (
                     <textarea
                       placeholder={field.placeholder}
                       rows={3}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                       disabled
                     />
-                  ) : field.type === 'select' ? (
+                  ) : field.field_type === 'select' ? (
                     <select
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                       disabled
                     >
                       <option value="">{field.placeholder}</option>
                       {field.options?.map((opt) => (
-                        <option key={opt.id} value={opt.value}>{opt.label}</option>
+                        <option key={opt.id} value={opt.option_value}>{opt.option_label}</option>
                       ))}
                     </select>
                   ) : (
                     <input
-                      type={field.type}
+                      type={field.field_type}
                       placeholder={field.placeholder}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                       disabled
