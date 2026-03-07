@@ -10,8 +10,7 @@ import {
   Bell,
   ChevronDown,
   CreditCard,
-  FileText,
-  Globe
+  FileText
 } from 'lucide-react';
 import { siteInfoAPI, notificationsAPI } from '../services/api';
 
@@ -70,7 +69,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Leads', path: '/admin/leads', icon: Users },
     { name: 'Contact Form', path: '/admin/contact-form', icon: FileText },
-    { name: 'Site Info', path: '/admin/site-info', icon: Globe },
     { name: 'Notifications', path: '/admin/notifications', icon: Bell },
     { name: 'Settings', path: '/admin/settings', icon: Settings },
   ];
