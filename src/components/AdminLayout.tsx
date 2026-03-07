@@ -13,11 +13,7 @@ import {
   FileText,
   Globe
 } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  read: boolean;
-}
+import { siteInfoAPI, notificationsAPI } from '../services/api';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -32,31 +28,42 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Load site info from localStorage
+  // Load site info from API
   useEffect(() => {
-    const loadSiteInfo = () => {
-      const saved = localStorage.getItem('siteInfo');
-      if (saved) {
-        const siteInfo = JSON.parse(saved);
-        setSiteName(siteInfo.siteName || 'RotateWise');
-        setSiteLogo(siteInfo.logo || '');
+    const loadSiteInfo = async () => {
+      try {
+        const response = await siteInfoAPI.get();
+        if (response.siteInfo) {
+          const info = response.siteInfo;
+          setSiteName(info.siteName || info.site_name || 'RotateWise');
+          setSiteLogo(info.logo || info.logo_url || '');
+        }
+      } catch (error) {
+        console.error('Error loading site info:', error);
       }
     };
     loadSiteInfo();
-    // Poll for changes
-    const interval = setInterval(loadSiteInfo, 1000);
+    
+    // Poll for changes every 30 seconds
+    const interval = setInterval(loadSiteInfo, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Get unread notifications count
+  // Get unread notifications count from API
   useEffect(() => {
-    const storedNotifications = localStorage.getItem('adminNotifications');
-    if (storedNotifications) {
-      const notifications: Notification[] = JSON.parse(storedNotifications);
-      setUnreadCount(notifications.filter(n => !n.read).length);
-    } else {
-      setUnreadCount(3); // Default unread count for demo
-    }
+    const loadUnreadCount = async () => {
+      try {
+        const response = await notificationsAPI.getAll();
+        if (response.notifications) {
+          const unread = response.notifications.filter((n: { is_read: boolean }) => !n.is_read).length;
+          setUnreadCount(unread);
+        }
+      } catch (error) {
+        console.error('Error loading notifications:', error);
+        setUnreadCount(0);
+      }
+    };
+    loadUnreadCount();
   }, [location]); // Re-check when location changes
 
   const menuItems = [
@@ -72,6 +79,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   const handleLogout = () => {
     localStorage.removeItem('adminAuth');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
     navigate('/admin');
   };
 
