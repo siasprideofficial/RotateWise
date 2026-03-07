@@ -333,11 +333,14 @@ export interface Notification {
 }
 
 export interface SiteInfo {
-  siteName: string;
+  id?: number;
+  site_name: string;
+  siteName?: string; // alias
   tagline: string;
   description: string;
   copyright: string;
-  logo: string;
+  logo_url: string;
+  logo?: string; // alias
 }
 
 export interface ContactInfo {
