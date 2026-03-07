@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
+import { leadsAPI, Lead } from '../services/api';
 import {
   Users,
   TrendingUp,
@@ -8,116 +9,52 @@ import {
   CheckCircle,
   ArrowUpRight,
   ArrowDownRight,
-  Eye
+  Eye,
+  RefreshCw
 } from 'lucide-react';
 
-interface Lead {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  loanAmount?: string;
-  employmentStatus?: string;
-  details?: string;
-  status: 'new' | 'contacted' | 'converted' | 'closed';
-  createdAt: string;
-  source: 'popup' | 'contact-page';
+interface Stats {
+  total: number;
+  new: number;
+  contacted: number;
+  converted: number;
 }
 
 export default function AdminDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<Stats>({
     total: 0,
     new: 0,
     contacted: 0,
     converted: 0
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await leadsAPI.getStats();
+      
+      if (response.stats) {
+        setStats(response.stats);
+      }
+      
+      if (response.recentLeads) {
+        setLeads(response.recentLeads);
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Load leads from localStorage
-    const storedLeads = localStorage.getItem('leads');
-    if (storedLeads) {
-      const parsedLeads: Lead[] = JSON.parse(storedLeads);
-      setLeads(parsedLeads);
-      
-      // Calculate stats
-      setStats({
-        total: parsedLeads.length,
-        new: parsedLeads.filter(l => l.status === 'new').length,
-        contacted: parsedLeads.filter(l => l.status === 'contacted').length,
-        converted: parsedLeads.filter(l => l.status === 'converted').length
-      });
-    } else {
-      // Initialize with demo leads
-      const demoLeads: Lead[] = [
-        {
-          id: '1',
-          name: 'John Smith',
-          email: 'john.smith@email.com',
-          phone: '+1 234 567 8901',
-          loanAmount: '$10,000 - $25,000',
-          employmentStatus: 'Employed Full-Time',
-          details: 'Looking for a personal loan for home renovation',
-          status: 'new',
-          createdAt: new Date().toISOString(),
-          source: 'contact-page'
-        },
-        {
-          id: '2',
-          name: 'Sarah Johnson',
-          email: 'sarah.j@email.com',
-          phone: '+1 234 567 8902',
-          loanAmount: '$5,000 - $10,000',
-          employmentStatus: 'Self-Employed',
-          details: 'Need consultation for business expansion',
-          status: 'contacted',
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-          source: 'popup'
-        },
-        {
-          id: '3',
-          name: 'Michael Chen',
-          email: 'michael.c@email.com',
-          phone: '+1 234 567 8903',
-          loanAmount: '$25,000 - $50,000',
-          employmentStatus: 'Business Owner',
-          details: 'Interested in credit card consolidation',
-          status: 'converted',
-          createdAt: new Date(Date.now() - 172800000).toISOString(),
-          source: 'contact-page'
-        },
-        {
-          id: '4',
-          name: 'Emily Davis',
-          email: 'emily.d@email.com',
-          details: 'Quick inquiry about interest rates',
-          status: 'new',
-          createdAt: new Date(Date.now() - 3600000).toISOString(),
-          source: 'popup'
-        },
-        {
-          id: '5',
-          name: 'Robert Wilson',
-          email: 'robert.w@email.com',
-          phone: '+1 234 567 8905',
-          loanAmount: 'Under $5,000',
-          employmentStatus: 'Employed Part-Time',
-          details: 'Small personal loan inquiry',
-          status: 'new',
-          createdAt: new Date(Date.now() - 7200000).toISOString(),
-          source: 'contact-page'
-        }
-      ];
-      
-      localStorage.setItem('leads', JSON.stringify(demoLeads));
-      setLeads(demoLeads);
-      setStats({
-        total: demoLeads.length,
-        new: demoLeads.filter(l => l.status === 'new').length,
-        contacted: demoLeads.filter(l => l.status === 'contacted').length,
-        converted: demoLeads.filter(l => l.status === 'converted').length
-      });
-    }
+    fetchData();
   }, []);
 
   const statCards = [
@@ -175,7 +112,7 @@ export default function AdminDashboard() {
       converted: 'bg-green-100 text-green-700',
       closed: 'bg-gray-100 text-gray-700'
     };
-    return styles[status];
+    return styles[status] || 'bg-gray-100 text-gray-700';
   };
 
   return (
@@ -187,14 +124,37 @@ export default function AdminDashboard() {
             <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-gray-600">Welcome back! Here's an overview of your leads.</p>
           </div>
-          <Link
-            to="/admin/leads"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all"
-          >
-            View All Leads
-            <ArrowUpRight className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <Link
+              to="/admin/leads"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all"
+            >
+              View All Leads
+              <ArrowUpRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+            {error}
+            <button
+              onClick={fetchData}
+              className="ml-2 underline hover:no-underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -214,7 +174,9 @@ export default function AdminDashboard() {
                     {stat.change}
                   </div>
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900">{stat.value}</h3>
+                <h3 className="text-3xl font-bold text-gray-900">
+                  {loading ? '...' : stat.value}
+                </h3>
                 <p className="text-gray-600 text-sm mt-1">{stat.title}</p>
               </div>
             );
@@ -234,45 +196,88 @@ export default function AdminDashboard() {
             </Link>
           </div>
           
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+          {loading ? (
+            <div className="px-6 py-12 text-center">
+              <RefreshCw className="w-8 h-8 text-gray-400 mx-auto mb-4 animate-spin" />
+              <p className="text-gray-500">Loading leads...</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {leads.slice(0, 5).map((lead) => (
+                      <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                              <span className="text-white font-semibold text-sm">
+                                {lead.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <span className="font-medium text-gray-900">{lead.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{lead.email}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize">
+                            {(lead.source || 'website').replace('-', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(lead.status)}`}>
+                            {lead.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-500 text-sm">{formatDate(lead.created_at)}</td>
+                        <td className="px-6 py-4">
+                          <Link
+                            to={`/admin/leads/${lead.id}`}
+                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
+                          >
+                            <Eye className="w-4 h-4" />
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden divide-y divide-gray-100">
                 {leads.slice(0, 5).map((lead) => (
-                  <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+                  <div key={lead.id} className="p-4">
+                    <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
                           <span className="text-white font-semibold text-sm">
                             {lead.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-medium text-gray-900">{lead.name}</span>
+                        <div>
+                          <p className="font-medium text-gray-900">{lead.name}</p>
+                          <p className="text-sm text-gray-500">{lead.email}</p>
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">{lead.email}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize">
-                        {lead.source.replace('-', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(lead.status)}`}>
                         {lead.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-500 text-sm">{formatDate(lead.createdAt)}</td>
-                    <td className="px-6 py-4">
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">{formatDate(lead.created_at)}</span>
                       <Link
                         to={`/admin/leads/${lead.id}`}
                         className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
@@ -280,52 +285,18 @@ export default function AdminDashboard() {
                         <Eye className="w-4 h-4" />
                         View
                       </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden divide-y divide-gray-100">
-            {leads.slice(0, 5).map((lead) => (
-              <div key={lead.id} className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-semibold text-sm">
-                        {lead.name.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{lead.name}</p>
-                      <p className="text-sm text-gray-500">{lead.email}</p>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(lead.status)}`}>
-                    {lead.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">{formatDate(lead.createdAt)}</span>
-                  <Link
-                    to={`/admin/leads/${lead.id}`}
-                    className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View
-                  </Link>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {leads.length === 0 && (
-            <div className="px-6 py-12 text-center">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No leads yet. They will appear here once someone submits a form.</p>
-            </div>
+              {leads.length === 0 && (
+                <div className="px-6 py-12 text-center">
+                  <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No leads yet. They will appear here once someone submits a form.</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

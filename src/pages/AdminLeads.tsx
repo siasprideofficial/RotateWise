@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
+import { leadsAPI, Lead } from '../services/api';
 import {
   Search,
   Filter,
@@ -8,21 +9,9 @@ import {
   Trash2,
   ChevronDown,
   Users,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
-
-interface Lead {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  loanAmount?: string;
-  employmentStatus?: string;
-  details?: string;
-  status: 'new' | 'contacted' | 'converted' | 'closed';
-  createdAt: string;
-  source: 'popup' | 'contact-page';
-}
 
 export default function AdminLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -31,13 +20,28 @@ export default function AdminLeads() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [deleteModal, setDeleteModal] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchLeads = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await leadsAPI.getAll();
+      if (response.leads) {
+        setLeads(response.leads);
+      }
+    } catch (err) {
+      console.error('Error fetching leads:', err);
+      setError('Failed to load leads. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const storedLeads = localStorage.getItem('leads');
-    if (storedLeads) {
-      setLeads(JSON.parse(storedLeads));
-    }
+    fetchLeads();
   }, []);
 
   useEffect(() => {
@@ -65,24 +69,32 @@ export default function AdminLeads() {
     }
 
     // Sort by date (newest first)
-    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     setFilteredLeads(result);
   }, [leads, searchQuery, statusFilter, sourceFilter]);
 
-  const handleDelete = (id: string) => {
-    const updatedLeads = leads.filter(lead => lead.id !== id);
-    setLeads(updatedLeads);
-    localStorage.setItem('leads', JSON.stringify(updatedLeads));
-    setDeleteModal(null);
+  const handleDelete = async (id: number) => {
+    try {
+      await leadsAPI.delete(id);
+      setLeads(leads.filter(lead => lead.id !== id));
+      setDeleteModal(null);
+    } catch (err) {
+      console.error('Error deleting lead:', err);
+      alert('Failed to delete lead. Please try again.');
+    }
   };
 
-  const updateStatus = (id: string, newStatus: Lead['status']) => {
-    const updatedLeads = leads.map(lead =>
-      lead.id === id ? { ...lead, status: newStatus } : lead
-    );
-    setLeads(updatedLeads);
-    localStorage.setItem('leads', JSON.stringify(updatedLeads));
+  const updateStatus = async (id: number, newStatus: Lead['status']) => {
+    try {
+      await leadsAPI.updateStatus(id, newStatus);
+      setLeads(leads.map(lead =>
+        lead.id === id ? { ...lead, status: newStatus } : lead
+      ));
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Failed to update status. Please try again.');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -103,7 +115,7 @@ export default function AdminLeads() {
       converted: 'bg-green-100 text-green-700',
       closed: 'bg-gray-100 text-gray-700'
     };
-    return styles[status];
+    return styles[status] || 'bg-gray-100 text-gray-700';
   };
 
   return (
@@ -115,11 +127,34 @@ export default function AdminLeads() {
             <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
             <p className="text-gray-600">Manage and track all your consultation requests.</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span className="font-medium text-gray-900">{filteredLeads.length}</span>
-            of {leads.length} leads
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchLeads}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <div className="text-sm text-gray-500">
+              <span className="font-medium text-gray-900">{filteredLeads.length}</span>
+              {' '}of {leads.length} leads
+            </div>
           </div>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+            {error}
+            <button
+              onClick={fetchLeads}
+              className="ml-2 underline hover:no-underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -175,47 +210,108 @@ export default function AdminLeads() {
 
         {/* Leads Table/Cards */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Desktop Table */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Lead</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+          {loading ? (
+            <div className="px-6 py-16 text-center">
+              <RefreshCw className="w-8 h-8 text-gray-400 mx-auto mb-4 animate-spin" />
+              <p className="text-gray-500">Loading leads...</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Lead</th>
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="text-left px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredLeads.map((lead) => (
+                      <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-white font-semibold text-sm">
+                                {lead.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{lead.name}</p>
+                              {lead.loan_amount && (
+                                <p className="text-sm text-gray-500">{lead.loan_amount}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-gray-900">{lead.email}</p>
+                          {lead.phone && <p className="text-sm text-gray-500">{lead.phone}</p>}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize">
+                            {(lead.source || 'website').replace('-', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select
+                            value={lead.status}
+                            onChange={(e) => updateStatus(lead.id, e.target.value as Lead['status'])}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border-0 cursor-pointer ${getStatusBadge(lead.status)}`}
+                          >
+                            <option value="new">New</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="converted">Converted</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                        </td>
+                        <td className="px-6 py-4 text-gray-500 text-sm whitespace-nowrap">
+                          {formatDate(lead.created_at)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={`/admin/leads/${lead.id}`}
+                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="w-5 h-5" />
+                            </Link>
+                            <button
+                              onClick={() => setDeleteModal(lead.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="lg:hidden divide-y divide-gray-100">
                 {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+                  <div key={lead.id} className="p-4">
+                    <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="text-white font-semibold text-sm">
+                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold">
                             {lead.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{lead.name}</p>
-                          {lead.loanAmount && (
-                            <p className="text-sm text-gray-500">{lead.loanAmount}</p>
-                          )}
+                          <p className="font-semibold text-gray-900">{lead.name}</p>
+                          <p className="text-sm text-gray-500">{lead.email}</p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-gray-900">{lead.email}</p>
-                      {lead.phone && <p className="text-sm text-gray-500">{lead.phone}</p>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize">
-                        {lead.source.replace('-', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
                       <select
                         value={lead.status}
                         onChange={(e) => updateStatus(lead.id, e.target.value as Lead['status'])}
@@ -226,105 +322,53 @@ export default function AdminLeads() {
                         <option value="converted">Converted</option>
                         <option value="closed">Closed</option>
                       </select>
-                    </td>
-                    <td className="px-6 py-4 text-gray-500 text-sm whitespace-nowrap">
-                      {formatDate(lead.createdAt)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/admin/leads/${lead.id}`}
-                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                          title="View Details"
-                        >
-                          <Eye className="w-5 h-5" />
-                        </Link>
-                        <button
-                          onClick={() => setDeleteModal(lead.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="lg:hidden divide-y divide-gray-100">
-            {filteredLeads.map((lead) => (
-              <div key={lead.id} className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold">
-                        {lead.name.charAt(0).toUpperCase()}
-                      </span>
                     </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{lead.name}</p>
-                      <p className="text-sm text-gray-500">{lead.email}</p>
+
+                    <div className="space-y-2 mb-3">
+                      {lead.phone && (
+                        <p className="text-sm text-gray-600">
+                          <span className="text-gray-400">Phone:</span> {lead.phone}
+                        </p>
+                      )}
+                      {lead.loan_amount && (
+                        <p className="text-sm text-gray-600">
+                          <span className="text-gray-400">Loan:</span> {lead.loan_amount}
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-500">{formatDate(lead.created_at)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                      <Link
+                        to={`/admin/leads/${lead.id}`}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium text-sm"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View Details
+                      </Link>
+                      <button
+                        onClick={() => setDeleteModal(lead.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </div>
                   </div>
-                  <select
-                    value={lead.status}
-                    onChange={(e) => updateStatus(lead.id, e.target.value as Lead['status'])}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border-0 cursor-pointer ${getStatusBadge(lead.status)}`}
-                  >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="converted">Converted</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2 mb-3">
-                  {lead.phone && (
-                    <p className="text-sm text-gray-600">
-                      <span className="text-gray-400">Phone:</span> {lead.phone}
-                    </p>
-                  )}
-                  {lead.loanAmount && (
-                    <p className="text-sm text-gray-600">
-                      <span className="text-gray-400">Loan:</span> {lead.loanAmount}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-500">{formatDate(lead.createdAt)}</p>
-                </div>
-
-                <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                  <Link
-                    to={`/admin/leads/${lead.id}`}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium text-sm"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View Details
-                  </Link>
-                  <button
-                    onClick={() => setDeleteModal(lead.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {filteredLeads.length === 0 && (
-            <div className="px-6 py-16 text-center">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No leads found</h3>
-              <p className="text-gray-500">
-                {searchQuery || statusFilter !== 'all' || sourceFilter !== 'all'
-                  ? 'Try adjusting your filters.'
-                  : 'Leads will appear here once someone submits a form.'}
-              </p>
-            </div>
+              {filteredLeads.length === 0 && (
+                <div className="px-6 py-16 text-center">
+                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No leads found</h3>
+                  <p className="text-gray-500">
+                    {searchQuery || statusFilter !== 'all' || sourceFilter !== 'all'
+                      ? 'Try adjusting your filters.'
+                      : 'Leads will appear here once someone submits a form.'}
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

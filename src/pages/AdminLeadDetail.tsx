@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
+import { leadsAPI, Lead } from '../services/api';
 import {
   ArrowLeft,
   Mail,
@@ -10,62 +11,63 @@ import {
   Calendar,
   MessageSquare,
   Trash2,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
-
-interface Lead {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  loanAmount?: string;
-  employmentStatus?: string;
-  details?: string;
-  status: 'new' | 'contacted' | 'converted' | 'closed';
-  createdAt: string;
-  source: 'popup' | 'contact-page';
-}
 
 export default function AdminLeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const storedLeads = localStorage.getItem('leads');
-    if (storedLeads) {
-      const leads: Lead[] = JSON.parse(storedLeads);
-      const foundLead = leads.find(l => l.id === id);
-      if (foundLead) {
-        setLead(foundLead);
+  const fetchLead = async () => {
+    if (!id) return;
+    
+    try {
+      setLoading(true);
+      setError('');
+      const response = await leadsAPI.getById(parseInt(id));
+      if (response.lead) {
+        setLead(response.lead);
       } else {
         navigate('/admin/leads');
       }
-    }
-  }, [id, navigate]);
-
-  const updateStatus = (newStatus: Lead['status']) => {
-    if (!lead) return;
-
-    const storedLeads = localStorage.getItem('leads');
-    if (storedLeads) {
-      const leads: Lead[] = JSON.parse(storedLeads);
-      const updatedLeads = leads.map(l =>
-        l.id === lead.id ? { ...l, status: newStatus } : l
-      );
-      localStorage.setItem('leads', JSON.stringify(updatedLeads));
-      setLead({ ...lead, status: newStatus });
+    } catch (err) {
+      console.error('Error fetching lead:', err);
+      setError('Failed to load lead details.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDelete = () => {
-    const storedLeads = localStorage.getItem('leads');
-    if (storedLeads) {
-      const leads: Lead[] = JSON.parse(storedLeads);
-      const updatedLeads = leads.filter(l => l.id !== id);
-      localStorage.setItem('leads', JSON.stringify(updatedLeads));
+  useEffect(() => {
+    fetchLead();
+  }, [id]);
+
+  const updateStatus = async (newStatus: Lead['status']) => {
+    if (!lead) return;
+
+    try {
+      await leadsAPI.updateStatus(lead.id, newStatus);
+      setLead({ ...lead, status: newStatus });
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Failed to update status. Please try again.');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!lead) return;
+    
+    try {
+      await leadsAPI.delete(lead.id);
       navigate('/admin/leads');
+    } catch (err) {
+      console.error('Error deleting lead:', err);
+      alert('Failed to delete lead. Please try again.');
     }
   };
 
@@ -88,14 +90,30 @@ export default function AdminLeadDetail() {
       converted: 'bg-green-100 text-green-700 border-green-200',
       closed: 'bg-gray-100 text-gray-700 border-gray-200'
     };
-    return styles[status];
+    return styles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
-  if (!lead) {
+  if (loading) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error || !lead) {
+    return (
+      <AdminLayout>
+        <div className="flex flex-col items-center justify-center h-64">
+          <p className="text-red-600 mb-4">{error || 'Lead not found'}</p>
+          <Link
+            to="/admin/leads"
+            className="text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            Back to Leads
+          </Link>
         </div>
       </AdminLayout>
     );
@@ -145,7 +163,7 @@ export default function AdminLeadDetail() {
                       {lead.status}
                     </span>
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700 capitalize">
-                      {lead.source.replace('-', ' ')}
+                      {(lead.source || 'website').replace('-', ' ')}
                     </span>
                   </div>
                 </div>
@@ -179,26 +197,26 @@ export default function AdminLeadDetail() {
                   </div>
                 )}
 
-                {lead.loanAmount && (
+                {lead.loan_amount && (
                   <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
                     <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
                       <DollarSign className="w-5 h-5 text-purple-600" />
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Loan Amount</p>
-                      <p className="text-gray-900 font-medium">{lead.loanAmount}</p>
+                      <p className="text-gray-900 font-medium">{lead.loan_amount}</p>
                     </div>
                   </div>
                 )}
 
-                {lead.employmentStatus && (
+                {lead.employment_status && (
                   <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
                     <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
                       <Briefcase className="w-5 h-5 text-orange-600" />
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Employment</p>
-                      <p className="text-gray-900 font-medium">{lead.employmentStatus}</p>
+                      <p className="text-gray-900 font-medium">{lead.employment_status}</p>
                     </div>
                   </div>
                 )}
@@ -206,14 +224,14 @@ export default function AdminLeadDetail() {
             </div>
 
             {/* Details/Message */}
-            {lead.details && (
+            {lead.message && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <MessageSquare className="w-5 h-5 text-gray-400" />
                   <h3 className="text-lg font-semibold text-gray-900">Additional Details</h3>
                 </div>
                 <p className="text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 p-4 rounded-xl">
-                  {lead.details}
+                  {lead.message}
                 </p>
               </div>
             )}
@@ -274,7 +292,7 @@ export default function AdminLeadDetail() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">Lead Created</p>
-                    <p className="text-sm text-gray-500">{formatDate(lead.createdAt)}</p>
+                    <p className="text-sm text-gray-500">{formatDate(lead.created_at)}</p>
                   </div>
                 </div>
               </div>

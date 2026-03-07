@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
+import { notificationsAPI, Notification } from '../services/api';
 import {
   Bell,
   UserPlus,
@@ -10,131 +11,80 @@ import {
   Trash2,
   Check,
   Filter,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  type: 'new_lead' | 'status_change' | 'system' | 'reminder';
-  title: string;
-  message: string;
-  leadId?: string;
-  read: boolean;
-  createdAt: string;
-}
 
 export default function AdminNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchNotifications = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await notificationsAPI.getAll();
+      if (response.notifications) {
+        setNotifications(response.notifications);
+      }
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+      setError('Failed to load notifications.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Load notifications from localStorage or create demo notifications
-    const storedNotifications = localStorage.getItem('adminNotifications');
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
-    } else {
-      // Create demo notifications
-      const demoNotifications: Notification[] = [
-        {
-          id: '1',
-          type: 'new_lead',
-          title: 'New Lead Received',
-          message: 'John Smith submitted a consultation request for $25,000 - $50,000 loan.',
-          leadId: '1',
-          read: false,
-          createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() // 30 mins ago
-        },
-        {
-          id: '2',
-          type: 'new_lead',
-          title: 'New Lead Received',
-          message: 'Sarah Johnson is interested in credit card loan consultation.',
-          leadId: '2',
-          read: false,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() // 2 hours ago
-        },
-        {
-          id: '3',
-          type: 'status_change',
-          title: 'Lead Status Updated',
-          message: 'Lead "Michael Brown" status changed from New to Contacted.',
-          leadId: '3',
-          read: true,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() // 5 hours ago
-        },
-        {
-          id: '4',
-          type: 'reminder',
-          title: 'Follow-up Reminder',
-          message: 'Remember to follow up with Emily Davis regarding her loan application.',
-          leadId: '4',
-          read: false,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() // 1 day ago
-        },
-        {
-          id: '5',
-          type: 'system',
-          title: 'Weekly Report Ready',
-          message: 'Your weekly lead performance report is ready to view.',
-          read: true,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString() // 2 days ago
-        },
-        {
-          id: '6',
-          type: 'new_lead',
-          title: 'New Lead from Popup',
-          message: 'Robert Wilson submitted a quick consultation request from the homepage popup.',
-          leadId: '5',
-          read: true,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString() // 3 days ago
-        },
-        {
-          id: '7',
-          type: 'system',
-          title: 'System Update',
-          message: 'Admin panel has been updated with new features. Check out the settings page.',
-          read: true,
-          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString() // 5 days ago
-        }
-      ];
-      setNotifications(demoNotifications);
-      localStorage.setItem('adminNotifications', JSON.stringify(demoNotifications));
-    }
+    fetchNotifications();
   }, []);
 
-  const saveNotifications = (updatedNotifications: Notification[]) => {
-    setNotifications(updatedNotifications);
-    localStorage.setItem('adminNotifications', JSON.stringify(updatedNotifications));
+  const markAsRead = async (id: number) => {
+    try {
+      await notificationsAPI.markAsRead(id);
+      setNotifications(notifications.map(n =>
+        n.id === id ? { ...n, is_read: true } : n
+      ));
+    } catch (err) {
+      console.error('Error marking as read:', err);
+    }
   };
 
-  const markAsRead = (id: string) => {
-    const updated = notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    );
-    saveNotifications(updated);
+  const markAllAsRead = async () => {
+    try {
+      await notificationsAPI.markAllAsRead();
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error('Error marking all as read:', err);
+    }
   };
 
-  const markAllAsRead = () => {
-    const updated = notifications.map(n => ({ ...n, read: true }));
-    saveNotifications(updated);
+  const deleteNotification = async (id: number) => {
+    try {
+      await notificationsAPI.delete(id);
+      setNotifications(notifications.filter(n => n.id !== id));
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
   };
 
-  const deleteNotification = (id: string) => {
-    const updated = notifications.filter(n => n.id !== id);
-    saveNotifications(updated);
-  };
-
-  const clearAllRead = () => {
-    const updated = notifications.filter(n => !n.read);
-    saveNotifications(updated);
+  const clearAllRead = async () => {
+    try {
+      await notificationsAPI.clearRead();
+      setNotifications(notifications.filter(n => !n.is_read));
+    } catch (err) {
+      console.error('Error clearing read:', err);
+    }
   };
 
   const getIcon = (type: string) => {
     switch (type) {
-      case 'new_lead':
+      case 'lead':
         return <UserPlus className="w-5 h-5 text-green-500" />;
-      case 'status_change':
+      case 'status':
         return <MessageSquare className="w-5 h-5 text-blue-500" />;
       case 'reminder':
         return <AlertCircle className="w-5 h-5 text-yellow-500" />;
@@ -166,8 +116,8 @@ export default function AdminNotifications() {
 
   const filteredNotifications = notifications
     .filter(n => {
-      if (filter === 'unread') return !n.read;
-      if (filter === 'read') return n.read;
+      if (filter === 'unread') return !n.is_read;
+      if (filter === 'read') return n.is_read;
       return true;
     })
     .filter(n => {
@@ -178,7 +128,7 @@ export default function AdminNotifications() {
       );
     });
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
     <AdminLayout>
@@ -192,6 +142,14 @@ export default function AdminNotifications() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={fetchNotifications}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
@@ -201,7 +159,7 @@ export default function AdminNotifications() {
                 Mark all as read
               </button>
             )}
-            {notifications.some(n => n.read) && (
+            {notifications.some(n => n.is_read) && (
               <button
                 onClick={clearAllRead}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -212,6 +170,13 @@ export default function AdminNotifications() {
             )}
           </div>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+            {error}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -270,7 +235,12 @@ export default function AdminNotifications() {
 
         {/* Notifications List */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {filteredNotifications.length === 0 ? (
+          {loading ? (
+            <div className="p-12 text-center">
+              <RefreshCw className="w-8 h-8 text-gray-400 mx-auto mb-4 animate-spin" />
+              <p className="text-gray-500">Loading notifications...</p>
+            </div>
+          ) : filteredNotifications.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Bell className="w-8 h-8 text-gray-400" />
@@ -290,14 +260,14 @@ export default function AdminNotifications() {
                 <div
                   key={notification.id}
                   className={`p-4 sm:p-5 hover:bg-gray-50 transition-colors ${
-                    !notification.read ? 'bg-indigo-50/50' : ''
+                    !notification.is_read ? 'bg-indigo-50/50' : ''
                   }`}
                 >
                   <div className="flex items-start gap-4">
                     {/* Icon */}
                     <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                      notification.type === 'new_lead' ? 'bg-green-100' :
-                      notification.type === 'status_change' ? 'bg-blue-100' :
+                      notification.type === 'lead' ? 'bg-green-100' :
+                      notification.type === 'status' ? 'bg-blue-100' :
                       notification.type === 'reminder' ? 'bg-yellow-100' :
                       'bg-purple-100'
                     }`}>
@@ -308,28 +278,28 @@ export default function AdminNotifications() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <h3 className={`text-sm font-semibold ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                          <h3 className={`text-sm font-semibold ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
                             {notification.title}
-                            {!notification.read && (
+                            {!notification.is_read && (
                               <span className="ml-2 inline-block w-2 h-2 bg-indigo-500 rounded-full"></span>
                             )}
                           </h3>
                           <p className="text-sm text-gray-600 mt-0.5">{notification.message}</p>
-                          <p className="text-xs text-gray-400 mt-1">{formatTime(notification.createdAt)}</p>
+                          <p className="text-xs text-gray-400 mt-1">{formatTime(notification.created_at)}</p>
                         </div>
                       </div>
 
                       {/* Actions */}
                       <div className="flex items-center gap-2 mt-3">
-                        {notification.leadId && (
+                        {notification.lead_id && (
                           <Link
-                            to={`/admin/leads/${notification.leadId}`}
+                            to={`/admin/leads/${notification.lead_id}`}
                             className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
                           >
                             View Lead →
                           </Link>
                         )}
-                        {!notification.read && (
+                        {!notification.is_read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
                             className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
